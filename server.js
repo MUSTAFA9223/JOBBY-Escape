@@ -152,4 +152,6 @@ setInterval(() => {
   }
 }, 1500).unref();
 
+require("./telegram-bot");
+
 server.listen(PORT, "0.0.0.0", () => console.log("JOBBY Escape server listening on " + PORT));

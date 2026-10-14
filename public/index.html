@@ -14,18 +14,19 @@ main{max-width:1180px;margin:auto;padding:26px 20px 40px}.top{display:flex;justi
 </head>
 <body><main>
 <header class="top"><div class="brand">JOBBY <span>ESCAPE</span></div><div class="pill">MULTIPLAYER TEST BUILD</div></header>
+<section class="panel" style="margin-bottom:18px"><h2>How to play</h2><div class="muted">1. Enter a nickname. 2. Create a room and share its 5-character code, or choose Quick Match. 3. When everyone is ready, press Start Match. 4. Move around and collect the gold diamonds. The highest score when the 60-second round ends wins.</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><span class="pill">PC: WASD / arrow keys</span><span class="pill">Phone: drag on the arena</span><span class="pill">Goal: collect gold diamonds</span></div></section>
 <div class="layout">
 <aside class="panel">
 <h2>Enter the arena</h2><p class="muted">Make a room for friends or jump into matchmaking.</p>
 <label class="muted" for="playerName">Player name</label><input id="playerName" class="field" maxlength="18" placeholder="Your nickname" autocomplete="nickname">
-<button id="quickBtn">Find a quick match</button><button id="createBtn" class="secondary">Create friends room</button>
+<button id="quickBtn">Quick Match — find players</button><button id="createBtn" class="secondary">Create Room for Friends</button>
 <div style="border-top:1px solid var(--line);margin:15px 0;padding-top:13px"><label class="muted" for="roomInput">Have a room code?</label><input id="roomInput" class="field" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase"><button id="joinBtn" class="secondary">Join room</button></div>
-<div id="roomPanel" class="hide"><div class="muted">YOUR ROOM CODE</div><div id="roomCode" class="roomcode">-----</div><button id="copyBtn" class="secondary">Copy invite code</button><button id="startBtn">Start match</button></div>
+<div id="roomPanel" class="hide"><div class="muted">YOUR ROOM CODE</div><div id="roomCode" class="roomcode">-----</div><button id="copyBtn" class="secondary">Copy invite code</button><button id="startBtn">Start 60-Second Round</button></div>
 <div id="status" class="status">Connecting to the game server…</div>
 <div class="scoreboard"><h2>Players <span id="playerCount" class="muted">0/8</span></h2><div id="playersList" class="muted">Join a room to see players.</div></div>
 <div class="share"><p class="muted">Share the game with your community.</p><a href="https://t.me/JOBBYChat" target="_blank" rel="noreferrer">JOBBY Community</a> · <a href="https://t.me/JOBBYSOL" target="_blank" rel="noreferrer">Telegram Channel</a></div>
 </aside>
-<section class="panel stage"><div class="stagehead"><h2>Escape Arena</h2><span id="gameState" class="pill">WAITING FOR PLAYERS</span></div><canvas id="game" width="1200" height="675" aria-label="JOBBY Escape game arena"></canvas><div class="under"><span>Move: WASD / Arrow keys · Touch: drag your player</span><span>Collect gold shards. Stay in the arena.</span></div><div class="muted" style="padding:12px 6px 2px">This is the first multiplayer foundation. Character art, obstacles, round rules, persistent rankings, and public deployment are still being built.</div></section>
+<section class="panel stage"><div class="stagehead"><h2>Collect the Gold</h2><span id="gameState" class="pill">WAITING FOR PLAYERS</span></div><div style="display:flex;justify-content:space-between;gap:10px;padding:0 8px 12px"><strong>Time left: <span id="timeLeft">60</span>s</strong><strong>Your score: <span id="myScore">0</span></strong></div><canvas id="game" width="1200" height="675" aria-label="JOBBY Escape game arena"></canvas><div class="under"><span>Move: WASD / Arrow keys · Touch: drag your player</span><span>Collect gold shards. Stay in the arena.</span></div><div id="roundMessage" class="status">Waiting to start. When the round begins, move your character to touch gold diamonds. Each diamond adds one point.</div></section>
 </div><footer>JOBBY Escape · Independent game project · No connection to the production website or bot</footer>
 </main>
 <script src="/socket.io/socket.io.js"></script>
@@ -34,7 +35,7 @@ main{max-width:1180px;margin:auto;padding:26px 20px 40px}.top{display:flex;justi
 const socket = io();
 const $ = id => document.getElementById(id);
 const canvas = $("game"), ctx = canvas.getContext("2d");
-let myId = null, room = null, players = new Map(), running = false, started = false;
+let myId = null, room = null, players = new Map(), running = false, started = false, roundEnded = false, roundEndAt = 0;
 let keys = new Set(), lastMove = 0, shards = [], score = 0, pointer = null;
 const world = {w:1800,h:1000};
 function status(msg, notice=false){$("status").textContent=msg;$("status").classList.toggle("notice",notice)}
@@ -46,7 +47,7 @@ socket.on("notice",msg=>status(msg));
 socket.on("joined",data=>{myId=data.playerId;room=data.room;world.w=data.arena.width;world.h=data.arena.height;players=new Map(data.players.map(p=>[p.id,p]));$("roomPanel").classList.remove("hide");$("roomCode").textContent=room;$("gameState").textContent="ROOM READY";status("Room "+room+" is ready. Invite friends or start the match.",true);renderPlayers();seedShards()});
 socket.on("players",list=>{for(const p of list){const old=players.get(p.id);players.set(p.id,{...old,...p})}for(const id of [...players.keys()])if(!list.some(p=>p.id===id))players.delete(id);renderPlayers()});
 socket.on("player-moved",p=>{const old=players.get(p.id);if(old)players.set(p.id,{...old,...p})});
-socket.on("match-start",()=>{started=true;running=true;$("gameState").textContent="MATCH LIVE";status("Match live. Collect shards and outscore the room.",true)});
+socket.on("match-start",()=>{started=true;running=true;roundEnded=false;roundEndAt=Date.now()+60000;score=0;seedShards();$("gameState").textContent="ROUND LIVE";$("roundMessage").textContent="Go! Collect gold diamonds. Avoid nothing for now—focus on collecting as many as you can.";status("Round started. Collect the gold diamonds!",true)});
 socket.on("scores",list=>{for(const p of list){const old=players.get(p.id);if(old)players.set(p.id,{...old,score:p.score})}renderPlayers()});
 $("createBtn").onclick=()=>enter("create-room");
 $("quickBtn").onclick=()=>{status("Searching for players…");enter("quick-match")};
@@ -63,11 +64,11 @@ ctx.strokeStyle="#f4cf4560";ctx.lineWidth=5;ctx.strokeRect(3,3,world.w-6,world.h
 for(const s of shards){if(!s.alive)continue;ctx.save();ctx.translate(s.x,s.y);ctx.rotate(Math.PI/4);ctx.fillStyle="#f4cf45";ctx.fillRect(-s.r/2,-s.r/2,s.r,s.r);ctx.restore()}
 for(const p of players.values())drawPlayer(p,p.x,p.y,1);
 ctx.restore();
-if(!room){ctx.fillStyle="#c5cedb";ctx.textAlign="center";ctx.font="bold 26px system-ui";ctx.fillText("CREATE A ROOM TO BEGIN",viewW/2,viewH/2);ctx.font="15px system-ui";ctx.fillStyle="#7e8da2";ctx.fillText("Multiplayer arena is waiting for you",viewW/2,viewH/2+30)}
+if(!room){ctx.fillStyle="#c5cedb";ctx.textAlign="center";ctx.font="bold 26px system-ui";ctx.fillText("1. CREATE OR JOIN A ROOM",viewW/2,viewH/2-12);ctx.font="15px system-ui";ctx.fillStyle="#7e8da2";ctx.fillText("2. START ROUND   3. COLLECT GOLD   4. GET THE HIGHEST SCORE",viewW/2,viewH/2+22)}
 }
-function frame(t){requestAnimationFrame(frame);const me=players.get(myId);if(started&&me){let dx=0,dy=0;if(keys.has("ArrowLeft")||keys.has("a"))dx--;if(keys.has("ArrowRight")||keys.has("d"))dx++;if(keys.has("ArrowUp")||keys.has("w"))dy--;if(keys.has("ArrowDown")||keys.has("s"))dy++;if(pointer){const rect=canvas.getBoundingClientRect();const px=(pointer.x-rect.left)/rect.width*canvas.width,py=(pointer.y-rect.top)/rect.height*canvas.height;const scale=Math.min(canvas.width/world.w,canvas.height/world.h);const tx=px/scale,ty=py/scale;if(Math.abs(tx-me.x)>12)dx+=Math.sign(tx-me.x);if(Math.abs(ty-me.y)>12)dy+=Math.sign(ty-me.y)}
+function frame(t){requestAnimationFrame(frame);if(started&&!roundEnded){const seconds=Math.max(0,Math.ceil((roundEndAt-Date.now())/1000));$("timeLeft").textContent=seconds;if(seconds===0){roundEnded=true;running=false;started=false;$("gameState").textContent="ROUND OVER";const rank=[...players.values()].sort((a,b)=>(b.score||0)-(a.score||0));const winner=rank[0];$("roundMessage").textContent="Round over! "+(winner?winner.name+" wins with "+winner.score+" points.":"No winner yet.")+" Press Start to play again.";status("Round finished. Check the scores below.",true)}}const me=players.get(myId);if(started&&me){let dx=0,dy=0;if(keys.has("ArrowLeft")||keys.has("a"))dx--;if(keys.has("ArrowRight")||keys.has("d"))dx++;if(keys.has("ArrowUp")||keys.has("w"))dy--;if(keys.has("ArrowDown")||keys.has("s"))dy++;if(pointer){const rect=canvas.getBoundingClientRect();const px=(pointer.x-rect.left)/rect.width*canvas.width,py=(pointer.y-rect.top)/rect.height*canvas.height;const scale=Math.min(canvas.width/world.w,canvas.height/world.h);const tx=px/scale,ty=py/scale;if(Math.abs(tx-me.x)>12)dx+=Math.sign(tx-me.x);if(Math.abs(ty-me.y)>12)dy+=Math.sign(ty-me.y)}
 if(dx||dy){const len=Math.hypot(dx,dy)||1;me.x=Math.max(24,Math.min(world.w-24,me.x+dx/len*4.1));me.y=Math.max(24,Math.min(world.h-24,me.y+dy/len*4.1));if(t-lastMove>45){socket.emit("move",{x:me.x,y:me.y});lastMove=t}}
-for(const s of shards){if(s.alive&&Math.hypot(me.x-s.x,me.y-s.y)<22){s.alive=false;score++;socket.emit("score",score);shards.push({x:40+Math.random()*(world.w-80),y:40+Math.random()*(world.h-80),r:8,alive:true})}}
+for(const s of shards){if(s.alive&&Math.hypot(me.x-s.x,me.y-s.y)<22){s.alive=false;score++;$("myScore").textContent=score;socket.emit("score",score);shards.push({x:40+Math.random()*(world.w-80),y:40+Math.random()*(world.h-80),r:8,alive:true})}}
 }draw()}
 window.addEventListener("keydown",e=>{if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase())});
 window.addEventListener("keyup",e=>keys.delete(e.key.toLowerCase()));
